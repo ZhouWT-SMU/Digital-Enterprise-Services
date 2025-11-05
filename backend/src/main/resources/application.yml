@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: digital-enterprise-services
+  main:
+    banner-mode: "off"
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+# Dify workflow integration placeholder configuration
+# dify:
+#   workflow:
+#     base-url: https://api.dify.ai
+#     api-key: your-api-key
+#     workflow-id: your-workflow-id

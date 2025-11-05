@@ -10,35 +10,48 @@
 
 ```
 .
-├── backend       # Node.js + Express 后端服务
+├── backend       # Spring Boot 后端服务
 └── frontend      # 静态前端页面（HTML/CSS/JavaScript）
 ```
 
-## 快速开始
+## 后端（Spring Boot）快速开始
 
-1. 安装依赖：
+1. 确保本地已安装 JDK 17 以及 Maven。
+2. 进入后端目录并启动服务：
 
    ```bash
    cd backend
-   npm install
+   mvn spring-boot:run
    ```
 
-2. 启动后端开发服务器（默认端口 3000）：
+   应用默认监听 `http://localhost:8080`。
+
+3. 若需要打包可执行 JAR：
 
    ```bash
-   npm run start
+   mvn clean package
    ```
 
-   启动后访问 `http://localhost:3000` 可打开前端页面。
+## Dify 工作流对接
 
-## 企业匹配工作流对接
+- 配置文件位于 `backend/src/main/resources/application.yml`，可通过如下属性配置工作流：
 
-- 后端预置了 `src/services/workflowClient.js`，用于与 Dify 工作流交互。
-- 通过设置环境变量 `DIFY_BASE_URL` 与 `DIFY_API_KEY` 即可启用真实的工作流调用。
-- 当前工作流尚未搭建时，接口会返回回显请求参数的占位响应，方便前端调试。
+  ```yaml
+  dify:
+    workflow:
+      base-url: https://api.dify.ai
+      api-key: <你的 API Key>
+      workflow-id: <工作流 ID>
+  ```
+
+- `DifyWorkflowClient` 目前使用简单的 HTTP 调用方式，并带有占位返回。待 [dify-java-client](https://github.com/imfangs/dify-java-client) 发布后，可在该位置替换为官方客户端调用。
+
+## 前端使用
+
+前端为纯静态页面，可直接通过浏览器打开 `frontend/index.html` 进行调试。页面会将匹配请求发送至后端 `/api/matching` 接口，并展示返回结果。
 
 ## 后续规划
 
 - 在专利搜寻与企业搜寻模块接入实际接口，并完善前端交互。
-- 根据 dify-java-client 或其他 SDK 完善 Dify 工作流的调用与鉴权逻辑。
-- 增加统一的日志、配置与错误处理机制。
+- 基于 dify-java-client 或官方 SDK 完善鉴权、错误处理与响应解析。
+- 根据业务需要补充认证、日志与持久化等通用能力。
