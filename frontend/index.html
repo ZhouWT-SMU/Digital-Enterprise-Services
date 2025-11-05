@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>企业数字化服务平台 Demo</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>企业数字化服务平台 Demo</h1>
+      <nav>
+        <a href="#matching">企业匹配</a>
+        <a href="#patent">专利搜寻</a>
+        <a href="#company">企业搜寻</a>
+      </nav>
+    </header>
+
+    <main>
+      <section id="matching" class="card">
+        <h2>企业匹配</h2>
+        <form id="matching-form">
+          <label>
+            企业需求
+            <textarea name="requirement" placeholder="请描述您的企业需求" required></textarea>
+          </label>
+
+          <div class="grid">
+            <label>
+              地区
+              <input type="text" name="region" placeholder="例如：北京" />
+            </label>
+            <label>
+              企业类型
+              <input type="text" name="companyType" placeholder="例如：制造业" />
+            </label>
+            <label>
+              企业预算 (万)
+              <input type="number" name="budget" min="0" step="10" />
+            </label>
+            <label>
+              主要技术
+              <input type="text" name="coreTech" placeholder="例如：人工智能" />
+            </label>
+            <label>
+              主营产品
+              <input type="text" name="mainProducts" placeholder="例如：工业机器人" />
+            </label>
+          </div>
+
+          <button type="submit">提交匹配请求</button>
+        </form>
+
+        <section id="matching-result" class="result hidden">
+          <h3>匹配结果</h3>
+          <pre id="matching-result-content"></pre>
+        </section>
+      </section>
+
+      <section id="patent" class="card disabled">
+        <h2>专利搜寻（开发中）</h2>
+        <p>此模块将提供与专利检索相关的筛选、列表展示和详情页面。目前正在搭建后端接口框架。</p>
+      </section>
+
+      <section id="company" class="card disabled">
+        <h2>企业搜寻（开发中）</h2>
+        <p>此模块将提供企业信息的搜索、筛选和可视化展示。后端接口和前端界面即将上线。</p>
+      </section>
+    </main>
+
+    <footer>
+      <p>© 2024 数字化企业服务 Demo</p>
+    </footer>
+
+    <script src="app.js" type="module"></script>
+  </body>
+</html>
