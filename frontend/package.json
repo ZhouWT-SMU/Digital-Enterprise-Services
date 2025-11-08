@@ -1,0 +1,32 @@
+{
+  "name": "digital-enterprise-services-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src --ext ts,tsx"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.28.9",
+    "axios": "^1.6.8",
+    "dayjs": "^1.11.10",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.21",
+    "@types/react-dom": "^18.2.7",
+    "@typescript-eslint/eslint-plugin": "^7.7.1",
+    "@typescript-eslint/parser": "^7.7.1",
+    "autoprefixer": "^10.4.17",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.3",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.9",
+    "@vitejs/plugin-react": "^4.2.1"
+  }
+}
