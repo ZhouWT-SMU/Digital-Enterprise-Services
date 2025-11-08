@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>企业信息上传与匹配演示</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  </head>
+  <body>
+    <div id="app" class="layout">
+      <main>
+        <section class="card">
+          <header class="card__header">
+            <h1>企业信息上传</h1>
+            <p class="muted">
+              表单遵循工作流所需的字段，提交后后台将调用 Dify workflow 进行入库处理。
+            </p>
+          </header>
+          <form class="form" @submit.prevent="submitForm">
+            <h2>企业基础信息</h2>
+            <label>
+              <span>企业名称 *</span>
+              <input v-model="form.name" type="text" required placeholder="请输入企业名称" />
+            </label>
+            <label>
+              <span>统一社会信用代码 *</span>
+              <input v-model="form.unifiedSocialCreditCode" type="text" required placeholder="18 位代码" maxlength="18" />
+            </label>
+            <label>
+              <span>成立日期 *</span>
+              <input v-model="form.establishmentDate" type="date" required />
+            </label>
+            <div class="grid">
+              <label>
+                <span>国家 *</span>
+                <input v-model="form.address.country" type="text" required />
+              </label>
+              <label>
+                <span>省份 *</span>
+                <input v-model="form.address.province" type="text" required />
+              </label>
+              <label>
+                <span>城市 *</span>
+                <input v-model="form.address.city" type="text" required />
+              </label>
+              <label>
+                <span>区/县 *</span>
+                <input v-model="form.address.district" type="text" required />
+              </label>
+            </div>
+            <label>
+              <span>详细地址 *</span>
+              <input v-model="form.address.streetAddress" type="text" required />
+            </label>
+            <div class="grid">
+              <label>
+                <span>企业规模 *</span>
+                <select v-model="form.scale" required>
+                  <option disabled value="">请选择</option>
+                  <option value="1-49">1-49 人</option>
+                  <option value="50-149">50-149 人</option>
+                  <option value="150-499">150-499 人</option>
+                  <option value="500+">500+ 人</option>
+                </select>
+              </label>
+              <label>
+                <span>企业类型 *</span>
+                <select v-model="form.companyType" required>
+                  <option disabled value="">请选择</option>
+                  <option value="民营">民营</option>
+                  <option value="国企">国企</option>
+                  <option value="外资">外资</option>
+                  <option value="合资">合资</option>
+                  <option value="事业单位">事业单位</option>
+                  <option value="其他">其他</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              <span>所属行业（逗号或换行分隔） *</span>
+              <textarea v-model="form.industriesInput" rows="2" required placeholder="例如：软件和信息服务, 人工智能"></textarea>
+            </label>
+            <label>
+              <span>技术栈（可选，逗号或换行分隔）</span>
+              <textarea v-model="form.technologyStackInput" rows="2" placeholder="Java, Spring Boot, MySQL"></textarea>
+            </label>
+            <label>
+              <span>业务简介（500-1500 字） *</span>
+              <textarea v-model="form.businessOverview" rows="6" minlength="500" maxlength="1500" required placeholder="请输入企业业务简介"></textarea>
+            </label>
+
+            <h2>核心产品/服务 *</h2>
+            <div v-for="(offering, index) in form.coreOfferings" :key="index" class="fieldset">
+              <header>
+                <h3>条目 {{ index + 1 }}</h3>
+                <button type="button" class="link" @click="removeCoreOffering(index)" v-if="form.coreOfferings.length > 1">删除</button>
+              </header>
+              <label>
+                <span>名称 *</span>
+                <input v-model="offering.name" type="text" required />
+              </label>
+              <label>
+                <span>类型 *</span>
+                <select v-model="offering.type" required>
+                  <option value="产品">产品</option>
+                  <option value="服务">服务</option>
+                  <option value="方案">方案</option>
+                </select>
+              </label>
+              <label>
+                <span>简介 *</span>
+                <textarea v-model="offering.description" rows="2" required></textarea>
+              </label>
+            </div>
+            <button type="button" class="secondary" @click="addCoreOffering">新增核心产品/服务</button>
+
+            <h2>知识产权（可选）</h2>
+            <div v-for="(item, index) in form.intellectualProperties" :key="`ip-${index}`" class="fieldset">
+              <header>
+                <h3>条目 {{ index + 1 }}</h3>
+                <button type="button" class="link" @click="removeIp(index)" v-if="form.intellectualProperties.length > 1">删除</button>
+              </header>
+              <label>
+                <span>类型</span>
+                <input v-model="item.type" type="text" placeholder="专利/软著/商标" />
+              </label>
+              <label>
+                <span>编号</span>
+                <input v-model="item.registrationNumber" type="text" />
+              </label>
+              <label>
+                <span>说明</span>
+                <textarea v-model="item.description" rows="2"></textarea>
+              </label>
+            </div>
+            <button type="button" class="secondary" @click="addIp">新增知识产权</button>
+
+            <h2>联系人 *</h2>
+            <div class="grid">
+              <label>
+                <span>姓名 *</span>
+                <input v-model="form.contact.name" type="text" required />
+              </label>
+              <label>
+                <span>职务 *</span>
+                <input v-model="form.contact.title" type="text" required />
+              </label>
+            </div>
+            <div class="grid">
+              <label>
+                <span>电话 *</span>
+                <input v-model="form.contact.phone" type="tel" required />
+              </label>
+              <label>
+                <span>工作邮箱 *</span>
+                <input v-model="form.contact.workEmail" type="email" required />
+              </label>
+            </div>
+
+            <h2>材料上传</h2>
+            <label class="upload">
+              <span>营业执照（PDF/JPG） *</span>
+              <input type="file" accept=".pdf,.jpg,.jpeg,.png" required @change="handleLicenseUpload" />
+              <small v-if="form.businessLicenseFileName">已上传：{{ form.businessLicenseFileName }}</small>
+            </label>
+            <label class="upload">
+              <span>其他附件（可多选）</span>
+              <input type="file" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" @change="handleAttachmentUpload" />
+              <ul class="file-list" v-if="attachments.length">
+                <li v-for="file in attachments" :key="file.id">{{ file.name }}</li>
+              </ul>
+            </label>
+
+            <footer class="actions">
+              <button type="submit" :disabled="submitting">{{ submitting ? '提交中...' : '提交企业信息' }}</button>
+              <p class="status" v-if="statusMessage" :class="{ error: statusError }">{{ statusMessage }}</p>
+            </footer>
+          </form>
+        </section>
+      </main>
+      <aside class="card">
+        <header class="card__header">
+          <h2>企业匹配</h2>
+          <p class="muted">调用 Dify chatflow 进行问答匹配。</p>
+        </header>
+        <div class="chat">
+          <label>
+            <span>匹配问题</span>
+            <textarea v-model="matchQuery" rows="3" placeholder="请输入需求或问题"></textarea>
+          </label>
+          <button class="secondary" @click="runMatch" :disabled="matching || !matchQuery.trim()">
+            {{ matching ? '查询中...' : '开始匹配' }}
+          </button>
+          <article class="match-result" v-if="matchResult">
+            <h3>匹配结果</h3>
+            <pre>{{ matchResult }}</pre>
+          </article>
+          <p class="status" v-if="matchStatus" :class="{ error: matchError }">{{ matchStatus }}</p>
+        </div>
+        <section class="card__footer">
+          <h3>接口说明</h3>
+          <ul>
+            <li>POST {{ apiBase }}/companies</li>
+            <li>POST {{ apiBase }}/documents</li>
+            <li>POST {{ apiBase }}/companies/match?query=...</li>
+          </ul>
+          <p class="muted">如需跨域部署，请在加载页面前设置 <code>window.API_BASE</code>。</p>
+        </section>
+      </aside>
+    </div>
+    <script src="./app.js"></script>
+  </body>
+</html>
