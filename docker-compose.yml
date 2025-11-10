@@ -1,0 +1,23 @@
+version: '3.8'
+services:
+  backend:
+    build: ./backend
+    env_file: .env.example
+    environment:
+      - DIFY_CHAT_APP_KEY=${DIFY_CHAT_APP_KEY}
+      - DIFY_DATASET_API_KEY=${DIFY_DATASET_API_KEY}
+      - DIFY_DATASET_ID=${DIFY_DATASET_ID}
+      - DIFY_BASE_URL=${DIFY_BASE_URL}
+      - SERVER_PORT=${SERVER_PORT:-8080}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+  frontend:
+    build: ./frontend
+    env_file: .env.example
+    environment:
+      - VITE_API_BASE=http://backend:8080
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
