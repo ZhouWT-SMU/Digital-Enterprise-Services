@@ -1,0 +1,12 @@
+server:
+  port: 8080
+  error:
+    include-message: always
+spring:
+  webflux:
+    base-path: /
+  main:
+    web-application-type: reactive
+  jackson:
+    serialization:
+      indent-output: true
