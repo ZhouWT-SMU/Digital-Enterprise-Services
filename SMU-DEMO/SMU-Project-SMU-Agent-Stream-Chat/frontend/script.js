@@ -1,6 +1,82 @@
 const moduleTitle = document.getElementById('moduleTitle');
 const moduleDescription = document.getElementById('moduleDescription');
 
+const API_BASE_URL = '/api/chat';
+const STORAGE_KEYS = {
+    userId: 'enterpriseChatUserId',
+    conversationPrefix: 'enterpriseChatConversation:',
+};
+
+const panelStates = new WeakMap();
+let cachedUserId = null;
+
+function getStorage() {
+    try {
+        return window.localStorage;
+    } catch (error) {
+        console.warn('本地存储不可用，使用临时会话。', error);
+        return null;
+    }
+}
+
+const storage = getStorage();
+
+function getUserId() {
+    if (cachedUserId) {
+        return cachedUserId;
+    }
+
+    if (storage) {
+        const existing = storage.getItem(STORAGE_KEYS.userId);
+        if (existing) {
+            cachedUserId = existing;
+            return cachedUserId;
+        }
+    }
+
+    const generated = `web-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+    if (storage) {
+        storage.setItem(STORAGE_KEYS.userId, generated);
+    }
+    cachedUserId = generated;
+    return cachedUserId;
+}
+
+function getPanelState(panel) {
+    let state = panelStates.get(panel);
+    if (state) {
+        return state;
+    }
+
+    const key = panel.dataset.conversationKey || null;
+    let conversationId = null;
+
+    if (key && storage) {
+        conversationId = storage.getItem(`${STORAGE_KEYS.conversationPrefix}${key}`);
+    }
+
+    state = {
+        conversationKey: key,
+        conversationId: conversationId || null,
+        isLoading: false,
+    };
+
+    panelStates.set(panel, state);
+    return state;
+}
+
+function persistConversationId(state, conversationId) {
+    if (!state) {
+        return;
+    }
+
+    state.conversationId = conversationId;
+
+    if (state.conversationKey && storage && conversationId) {
+        storage.setItem(`${STORAGE_KEYS.conversationPrefix}${state.conversationKey}`, conversationId);
+    }
+}
+
 function handleNavigation() {
     const menuItems = document.querySelectorAll('.menu-item');
     const modules = document.querySelectorAll('.module');
@@ -33,13 +109,21 @@ function handleNavigation() {
     });
 }
 
-function appendMessage(history, role, content, labels) {
+function appendMessage(history, role, content, labels, options = {}) {
     if (!history) {
-        return;
+        return null;
     }
 
     const message = document.createElement('div');
     message.className = `message ${role}`;
+
+    if (options.pending) {
+        message.classList.add('pending');
+    }
+
+    if (options.id) {
+        message.dataset.messageId = options.id;
+    }
 
     const meta = document.createElement('div');
     meta.className = 'message-meta';
@@ -52,6 +136,8 @@ function appendMessage(history, role, content, labels) {
     message.append(meta, body);
     history.appendChild(message);
     history.scrollTop = history.scrollHeight;
+
+    return { element: message, body };
 }
 
 function setupChatPanels() {
@@ -74,9 +160,12 @@ function setupChatPanels() {
         const replyTemplate = panel.dataset.replyTemplate
             || '已记录您的需求“{message}”。我们将结合企业画像为您准备相应的服务建议。';
 
-        const sendCurrentMessage = () => {
+        const panelState = getPanelState(panel);
+        const defaultSendLabel = sendButton.textContent;
+
+        const sendCurrentMessage = async () => {
             const text = input.value.trim();
-            if (!text) {
+            if (!text || panelState.isLoading) {
                 return;
             }
 
@@ -84,10 +173,59 @@ function setupChatPanels() {
             input.value = '';
             input.focus();
 
-            setTimeout(() => {
-                const reply = replyTemplate.replace('{message}', text);
-                appendMessage(history, 'assistant', reply, labels);
-            }, 500);
+            panelState.isLoading = true;
+            sendButton.disabled = true;
+            sendButton.textContent = '发送中…';
+
+            const pending = appendMessage(history, 'assistant', '正在生成回复…', labels, { pending: true });
+            const payload = {
+                message: text,
+                userId: getUserId(),
+            };
+
+            if (panelState.conversationId) {
+                payload.conversationId = panelState.conversationId;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/send-stream`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || data.success === false) {
+                    const errorMessage = data && data.error ? data.error : `请求失败，状态码 ${response.status}`;
+                    throw new Error(errorMessage);
+                }
+
+                const answer = (data.answer || '').trim();
+                pending.body.textContent = answer || '对话已完成。';
+                pending.element.classList.remove('pending');
+
+                if (data.conversationId) {
+                    persistConversationId(panelState, data.conversationId);
+                }
+            } catch (error) {
+                console.error('调用智能助手失败:', error);
+                pending.element.classList.remove('pending');
+                pending.element.classList.add('error');
+
+                if (replyTemplate) {
+                    pending.body.textContent = replyTemplate.replace('{message}', text);
+                } else {
+                    pending.body.textContent = `抱歉，暂时无法获取智能助手回复：${error.message}`;
+                }
+            } finally {
+                panelState.isLoading = false;
+                sendButton.disabled = false;
+                sendButton.textContent = defaultSendLabel;
+                history.scrollTop = history.scrollHeight;
+            }
         };
 
         sendButton.addEventListener('click', sendCurrentMessage);
