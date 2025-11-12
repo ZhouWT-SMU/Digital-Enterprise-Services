@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMU Agent 聊天界面</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+
+<body>
+    <div class="chat-container">
+        <!-- 左侧历史会话面板 -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h3><i class="fas fa-comments"></i> 历史会话</h3>
+                <button class="new-chat-btn" onclick="createNewChat()">
+                    <i class="fas fa-plus"></i> 新对话
+                </button>
+            </div>
+            <div class="conversation-list" id="conversationList">
+                <!-- 会话列表将通过JavaScript动态加载 -->
+            </div>
+            <div class="sidebar-footer">
+                <button class="refresh-btn" onclick="loadConversations()">
+                    <i class="fas fa-sync-alt"></i> 刷新
+                </button>
+            </div>
+        </div>
+
+        <!-- 中间聊天区域 -->
+        <div class="chat-main">
+            <div class="chat-header">
+                <h2 id="currentConversationTitle">新对话</h2>
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                <!-- 消息内容将通过JavaScript动态加载 -->
+            </div>
+
+            <div class="chat-input-container">
+                <div class="input-options">
+                    <label class="streaming-toggle">
+                        <input type="checkbox" id="streamingToggle" checked>
+                        <span class="toggle-label">
+                            <i class="fas fa-stream"></i> 流式渲染
+                        </span>
+                    </label>
+                    <div class="action-buttons">
+                        <button class="option-btn" onclick="clearChat()">
+                            <i class="fas fa-trash"></i> 清空
+                        </button>
+                        <button class="option-btn" onclick="exportChat()">
+                            <i class="fas fa-download"></i> 导出
+                        </button>
+                    </div>
+                </div>
+                <div class="input-wrapper">
+                    <textarea id="messageInput" placeholder="输入消息..." rows="3"
+                        onkeydown="handleKeyDown(event)"></textarea>
+                    <button class="send-btn" onclick="sendMessage()">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通用确认模态对话框 -->
+    <div id="confirmModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle"><i class="fas fa-question-circle"></i> 确认操作</h3>
+                <button class="modal-close" onclick="closeConfirmModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p id="modalMessage">确定要执行此操作吗？</p>
+                <p id="modalWarning" class="modal-warning" style="display: none;">此操作不可撤销，请谨慎操作。</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="closeConfirmModal()">取消</button>
+                <button id="confirmButton" class="btn-confirm" onclick="executeConfirmAction()">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
