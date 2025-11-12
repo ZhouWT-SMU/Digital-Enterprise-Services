@@ -1,8 +1,11 @@
 package edu.smu.agent.service;
 
+import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -69,36 +72,96 @@ public class DifyChatFlowService {
      * 发送消息（流式模式）
      */
     public ChatMessageResponse sendStreamMessage(String query, String userId) {
+        return sendStreamMessage(query, userId, null, null);
+    }
+
+    /**
+     * 发送消息（流式模式），支持片段回调
+     */
+    public ChatMessageResponse sendStreamMessage(String query, String userId, String conversationId,
+            Consumer<String> chunkConsumer) {
         try (DifyChatflowClient client = DifyClientFactory.createChatWorkflowClient(baseUrl, chatflowApiKey)) {
-            ChatMessage message = ChatMessage.builder()
+            ChatMessage.ChatMessageBuilder messageBuilder = ChatMessage.builder()
                     .query(query)
                     .user(userId)
-                    .responseMode(ResponseMode.STREAMING)
-                    .build();
+                    .responseMode(ResponseMode.STREAMING);
 
-            log.info("发送流式消息: user={}, query={}", userId, query);
+            if (conversationId != null && !conversationId.isBlank()) {
+                messageBuilder.conversationId(conversationId);
+            }
 
-            // 用于等待异步回调完成
+            ChatMessage message = messageBuilder.build();
+
+            log.info("发送流式消息: user={}, query={}, conversationId={}", userId, query, conversationId);
+
             CountDownLatch latch = new CountDownLatch(1);
             StringBuilder responseBuilder = new StringBuilder();
             AtomicReference<String> messageId = new AtomicReference<>();
+            AtomicReference<String> conversationRef = new AtomicReference<>(conversationId);
             AtomicReference<Exception> exceptionRef = new AtomicReference<>();
-            AtomicReference<Boolean> hasContent = new AtomicReference<>(false);
+            AtomicBoolean hasContent = new AtomicBoolean(false);
+            AtomicBoolean streamTerminated = new AtomicBoolean(false);
 
-            // 发送流式消息
+            Runnable stopStreaming = () -> {
+                if (!streamTerminated.getAndSet(true)) {
+                    latch.countDown();
+                }
+            };
+
             client.sendChatMessageStream(message, new ChatStreamCallback() {
                 @Override
                 public void onMessage(MessageEvent event) {
-                    log.info("收到消息片段: {}", event.getAnswer());
-                    responseBuilder.append(event.getAnswer());
-                    hasContent.set(true);
+                    if (streamTerminated.get()) {
+                        return;
+                    }
+
+                    String answer = event.getAnswer();
+                    if (answer != null && !answer.isEmpty()) {
+                        log.info("收到消息片段: {}", answer);
+                        responseBuilder.append(answer);
+                        hasContent.set(true);
+
+                        if (chunkConsumer != null) {
+                            try {
+                                chunkConsumer.accept(answer);
+                            } catch (Exception consumerError) {
+                                exceptionRef.set(new RuntimeException("处理流式片段失败", consumerError));
+                                stopStreaming.run();
+                            }
+                        }
+                    }
+
+                    String eventConversationId = extractString(event, "getConversationId");
+                    if (eventConversationId != null && !eventConversationId.isEmpty()) {
+                        conversationRef.set(eventConversationId);
+                    }
                 }
 
                 @Override
                 public void onMessageEnd(MessageEndEvent event) {
                     log.info("消息结束，完整消息ID: {}", event.getMessageId());
                     messageId.set(event.getMessageId());
-                    latch.countDown();
+
+                    String eventConversationId = extractString(event, "getConversationId");
+                    if (eventConversationId != null && !eventConversationId.isEmpty()) {
+                        conversationRef.set(eventConversationId);
+                    }
+
+                    String eventAnswer = extractString(event, "getAnswer");
+                    if (eventAnswer != null && !eventAnswer.isEmpty() && responseBuilder.length() == 0) {
+                        responseBuilder.append(eventAnswer);
+                        hasContent.set(true);
+
+                        if (chunkConsumer != null) {
+                            try {
+                                chunkConsumer.accept(eventAnswer);
+                            } catch (Exception consumerError) {
+                                exceptionRef.set(new RuntimeException("处理流式片段失败", consumerError));
+                            }
+                        }
+                    }
+
+                    stopStreaming.run();
                 }
 
                 @Override
@@ -140,14 +203,14 @@ public class DifyChatFlowService {
                 public void onError(ErrorEvent event) {
                     log.error("流式响应错误: {}", event.getMessage());
                     exceptionRef.set(new RuntimeException("流式响应错误: " + event.getMessage()));
-                    latch.countDown();
+                    stopStreaming.run();
                 }
 
                 @Override
                 public void onException(Throwable throwable) {
                     log.error("流式响应异常: {}", throwable.getMessage(), throwable);
                     exceptionRef.set(new RuntimeException("流式响应异常: " + throwable.getMessage(), throwable));
-                    latch.countDown();
+                    stopStreaming.run();
                 }
 
                 @Override
@@ -156,24 +219,22 @@ public class DifyChatFlowService {
                 }
             });
 
-            // 等待流式响应完成，增加超时时间到60秒
             boolean completed = latch.await(60, TimeUnit.SECONDS);
 
-            // 检查是否有异常
             Exception exception = exceptionRef.get();
             if (exception != null) {
                 throw new RuntimeException("流式响应失败", exception);
             }
 
-            // 如果没有收到 onMessageEnd 事件但有内容，仍然返回响应
-            if (!completed && hasContent.get() && !responseBuilder.toString().isEmpty()) {
+            if (!completed && hasContent.get() && responseBuilder.length() > 0) {
                 log.warn("未收到 onMessageEnd 事件，但已收集到内容，返回部分响应");
 
-                // 构建响应对象
                 ChatMessageResponse response = new ChatMessageResponse();
-                response.setMessageId("stream-" + System.currentTimeMillis()); // 生成临时消息ID
+                String fallbackId = "stream-" + System.currentTimeMillis();
+                response.setMessageId(messageId.get() != null ? messageId.get() : fallbackId);
                 response.setAnswer(responseBuilder.toString());
-                response.setConversationId("stream-" + System.currentTimeMillis()); // 生成临时会话ID
+                response.setConversationId(
+                        conversationRef.get() != null ? conversationRef.get() : fallbackId);
                 response.setCreatedAt(System.currentTimeMillis());
 
                 log.info("流式响应完成（部分）: messageId={}, answerLength={}",
@@ -187,21 +248,34 @@ public class DifyChatFlowService {
                 throw new RuntimeException("流式响应超时");
             }
 
-            // 构建响应对象
             ChatMessageResponse response = new ChatMessageResponse();
             response.setMessageId(messageId.get());
             response.setAnswer(responseBuilder.toString());
-            response.setConversationId(messageId.get()); // 使用消息ID作为会话ID
+            response.setConversationId(conversationRef.get());
             response.setCreatedAt(System.currentTimeMillis());
 
-            log.info("流式响应完成: messageId={}, answerLength={}",
-                    response.getMessageId(), response.getAnswer().length());
+            log.info("流式响应完成: messageId={}, answerLength={}, conversationId={}",
+                    response.getMessageId(), response.getAnswer().length(), response.getConversationId());
 
             return response;
 
         } catch (Exception e) {
             log.error("发送流式消息失败: user={}, query={}", userId, query, e);
             throw new RuntimeException("发送流式消息失败: " + e.getMessage(), e);
+        }
+    }
+
+    private String extractString(Object source, String methodName) {
+        if (source == null) {
+            return null;
+        }
+
+        try {
+            var method = source.getClass().getMethod(methodName);
+            Object value = method.invoke(source);
+            return value != null ? Objects.toString(value) : null;
+        } catch (Exception ignored) {
+            return null;
         }
     }
 
