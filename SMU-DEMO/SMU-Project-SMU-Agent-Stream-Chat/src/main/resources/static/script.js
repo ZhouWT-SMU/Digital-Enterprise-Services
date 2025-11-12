@@ -1,718 +1,306 @@
-// 全局变量
-let currentConversationId = null;
-let conversations = [];
-let messages = [];
-let pendingConfirmAction = null; // 待执行的确认操作
+const moduleTitle = document.getElementById('moduleTitle');
+const moduleDescription = document.getElementById('moduleDescription');
 
-// 确认操作类型
-const CONFIRM_TYPES = {
-    DELETE_CONVERSATION: 'delete_conversation',
-    CLEAR_CHAT: 'clear_chat',
-    EXPORT_CHAT: 'export_chat'
-};
+function handleNavigation() {
+    const menuItems = document.querySelectorAll('.menu-item');
+    const modules = document.querySelectorAll('.module');
 
-// API 配置
-const API_BASE_URL = 'http://localhost:8080/api/chat';
+    menuItems.forEach((item) => {
+        item.addEventListener('click', () => {
+            if (item.classList.contains('active')) {
+                return;
+            }
 
-// 初始化
-document.addEventListener('DOMContentLoaded', function () {
-    loadConversations();
-    setupEventListeners();
+            menuItems.forEach((button) => button.classList.remove('active'));
+            modules.forEach((section) => section.classList.remove('active'));
 
-    // 点击模态对话框外部关闭
-    const modal = document.getElementById('confirmModal');
-    modal.addEventListener('click', function (event) {
-        if (event.target === modal) {
-            closeConfirmModal();
-        }
-    });
-});
+            item.classList.add('active');
+            const targetId = item.dataset.target;
+            const targetModule = document.getElementById(targetId);
 
-// 设置事件监听器
-function setupEventListeners() {
-    const messageInput = document.getElementById('messageInput');
-    messageInput.addEventListener('input', function () {
-        this.style.height = 'auto';
-        this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+            if (targetModule) {
+                targetModule.classList.add('active');
+            }
+
+            if (moduleTitle) {
+                moduleTitle.textContent = item.dataset.title || '';
+            }
+
+            if (moduleDescription) {
+                moduleDescription.textContent = item.dataset.description || '';
+            }
+        });
     });
 }
 
-// 加载会话列表
-async function loadConversations() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/conversations?userId=test-user&limit=20`);
-        const data = await response.json();
-
-        if (data.success) {
-            conversations = data.data || [];
-            renderConversations();
-        }
-    } catch (error) {
-        console.error('加载会话失败:', error);
-        showError('加载会话失败');
+function appendMessage(history, role, content, labels) {
+    if (!history) {
+        return;
     }
+
+    const message = document.createElement('div');
+    message.className = `message ${role}`;
+
+    const meta = document.createElement('div');
+    meta.className = 'message-meta';
+    meta.textContent = role === 'user' ? labels.user : labels.assistant;
+
+    const body = document.createElement('div');
+    body.className = 'message-body';
+    body.textContent = content;
+
+    message.append(meta, body);
+    history.appendChild(message);
+    history.scrollTop = history.scrollHeight;
 }
 
-// 渲染会话列表
-function renderConversations() {
-    const conversationList = document.getElementById('conversationList');
-    conversationList.innerHTML = '';
+function setupChatPanels() {
+    const panels = document.querySelectorAll('[data-chat]');
 
-    // 按时间倒序排序，最近的对话在最上面
-    const sortedConversations = [...conversations].sort((a, b) => {
-        const timeA = typeof a.updatedAt === 'number'
-            ? (a.updatedAt > 1000000000000 ? a.updatedAt : a.updatedAt * 1000)
-            : new Date(a.updatedAt).getTime();
-        const timeB = typeof b.updatedAt === 'number'
-            ? (b.updatedAt > 1000000000000 ? b.updatedAt : b.updatedAt * 1000)
-            : new Date(b.updatedAt).getTime();
-        return timeB - timeA; // 倒序：最新的在前
+    panels.forEach((panel) => {
+        const history = panel.querySelector('[data-chat-history]');
+        const input = panel.querySelector('[data-chat-input]');
+        const sendButton = panel.querySelector('[data-chat-send]');
+
+        if (!history || !input || !sendButton) {
+            return;
+        }
+
+        const labels = {
+            user: panel.dataset.userLabel || '我',
+            assistant: panel.dataset.assistantLabel || '智能助手',
+        };
+
+        const replyTemplate = panel.dataset.replyTemplate
+            || '已记录您的需求“{message}”。我们将结合企业画像为您准备相应的服务建议。';
+
+        const sendCurrentMessage = () => {
+            const text = input.value.trim();
+            if (!text) {
+                return;
+            }
+
+            appendMessage(history, 'user', text, labels);
+            input.value = '';
+            input.focus();
+
+            setTimeout(() => {
+                const reply = replyTemplate.replace('{message}', text);
+                appendMessage(history, 'assistant', reply, labels);
+            }, 500);
+        };
+
+        sendButton.addEventListener('click', sendCurrentMessage);
+
+        input.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendCurrentMessage();
+            }
+        });
+
+        const suggestions = panel.querySelectorAll('[data-chat-suggestion]');
+        suggestions.forEach((button) => {
+            button.addEventListener('click', () => {
+                input.value = button.dataset.text || '';
+                input.focus();
+            });
+        });
+    });
+}
+
+function createDynamicItem(container) {
+    const item = document.createElement('div');
+    item.className = 'dynamic-item';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = container.dataset.name;
+    input.placeholder = container.dataset.placeholder || '';
+
+    if (container.dataset.required === 'true') {
+        input.required = true;
+    }
+
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'remove-item';
+    removeButton.setAttribute('aria-label', '删除');
+    removeButton.textContent = '×';
+
+    item.append(input, removeButton);
+    return item;
+}
+
+function updateRemoveButtons(container) {
+    const items = container.querySelectorAll('.dynamic-item');
+    const shouldShow = items.length > 1;
+    items.forEach((item) => {
+        const removeButton = item.querySelector('.remove-item');
+        if (removeButton) {
+            removeButton.style.visibility = shouldShow ? 'visible' : 'hidden';
+        }
+    });
+}
+
+function setupDynamicList(containerId) {
+    const container = document.getElementById(containerId);
+    const addButton = document.querySelector(`.add-item[data-target="${containerId}"]`);
+
+    if (!container || !addButton) {
+        return;
+    }
+
+    if (container.dataset.required === 'true') {
+        const firstInput = container.querySelector('input');
+        if (firstInput) {
+            firstInput.required = true;
+        }
+    }
+
+    updateRemoveButtons(container);
+
+    addButton.addEventListener('click', () => {
+        const newItem = createDynamicItem(container);
+        container.appendChild(newItem);
+        const newInput = newItem.querySelector('input');
+        if (newInput) {
+            newInput.focus();
+        }
+        updateRemoveButtons(container);
     });
 
-    sortedConversations.forEach(conversation => {
-        const conversationItem = document.createElement('div');
-        conversationItem.className = 'conversation-item';
+    container.addEventListener('click', (event) => {
+        if (event.target.classList.contains('remove-item')) {
+            const item = event.target.closest('.dynamic-item');
+            if (item) {
+                item.remove();
+                updateRemoveButtons(container);
+            }
+        }
+    });
+}
 
-        const title = conversation.name || '未命名对话';
-        // 处理时间戳 - 可能是毫秒或秒
-        const timestamp = typeof conversation.updatedAt === 'number'
-            ? (conversation.updatedAt > 1000000000000 ? conversation.updatedAt : conversation.updatedAt * 1000)
-            : conversation.updatedAt;
-        const time = new Date(timestamp).toLocaleString();
+function normaliseFormData(formData) {
+    const result = {};
 
-        conversationItem.innerHTML = `
-            <div class="conversation-content" onclick="selectConversation('${conversation.id}')">
-                <div class="conversation-title">${title}</div>
-                <div class="conversation-time">${time}</div>
-            </div>
-            <div class="conversation-actions">
-                <button class="delete-btn" onclick="deleteConversation('${conversation.id}', event)" title="删除会话">
-                    <i class="fas fa-trash"></i>
-                </button>
+    formData.forEach((value, key) => {
+        const normalisedKey = key.endsWith('[]') ? key.slice(0, -2) : key;
+        const trimmedValue = value.trim();
+        if (!trimmedValue) {
+            return;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(result, normalisedKey)) {
+            if (!Array.isArray(result[normalisedKey])) {
+                result[normalisedKey] = [result[normalisedKey]];
+            }
+            result[normalisedKey].push(trimmedValue);
+        } else {
+            result[normalisedKey] = trimmedValue;
+        }
+    });
+
+    return result;
+}
+
+function renderArraySection(title, values) {
+    if (!values || values.length === 0) {
+        return '';
+    }
+
+    const listItems = values
+        .map((entry) => `<li>${entry}</li>`)
+        .join('');
+
+    return `
+        <div class="result-section">
+            <h4>${title}</h4>
+            <ul>${listItems}</ul>
+        </div>
+    `;
+}
+
+function setupCapabilityForm() {
+    const form = document.getElementById('capabilityForm');
+    const resultContainer = document.getElementById('formResult');
+
+    if (!form || !resultContainer) {
+        return;
+    }
+
+    ['coreProductsList', 'intellectualPropertiesList', 'patentList'].forEach((id) => {
+        setupDynamicList(id);
+    });
+
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const formData = new FormData(form);
+        const normalised = normaliseFormData(formData);
+
+        const { companyName, creditCode, companyScale, companyAddress, companyType, businessIntro, contactName, contactInfo } = normalised;
+
+        const summary = `
+            <div class="result-summary">
+                <h3>能力信息提交成功</h3>
+                <p>感谢您提交 <strong>${companyName || '未命名企业'}</strong> 的最新能力信息，我们的顾问将尽快与您联系。</p>
+                <div class="result-grid">
+                    <div><span>统一信用代码</span><strong>${creditCode || '-'}</strong></div>
+                    <div><span>企业规模</span><strong>${companyScale || '-'}</strong></div>
+                    <div><span>企业类型</span><strong>${companyType || '-'}</strong></div>
+                    <div><span>企业地址</span><strong>${companyAddress || '-'}</strong></div>
+                    <div><span>联系人</span><strong>${contactName || '-'}</strong></div>
+                    <div><span>联系方式</span><strong>${contactInfo || '-'}</strong></div>
+                </div>
+                <div class="result-section">
+                    <h4>业务简介</h4>
+                    <p>${businessIntro || '—'}</p>
+                </div>
+                ${renderArraySection('核心产品', Array.isArray(normalised.coreProducts) ? normalised.coreProducts : normalised.coreProducts ? [normalised.coreProducts] : [])}
+                ${renderArraySection('知识产权', Array.isArray(normalised.intellectualProperties) ? normalised.intellectualProperties : normalised.intellectualProperties ? [normalised.intellectualProperties] : [])}
+                ${renderArraySection('专利', Array.isArray(normalised.patents) ? normalised.patents : normalised.patents ? [normalised.patents] : [])}
             </div>
         `;
 
-        conversationList.appendChild(conversationItem);
-    });
-}
+        resultContainer.innerHTML = summary;
+        resultContainer.classList.add('visible');
 
-// 选择会话
-async function selectConversation(conversationId) {
-    console.log('选择会话:', conversationId);
-    currentConversationId = conversationId;
-
-    // 更新UI - 移除所有active状态，然后为当前会话添加active状态
-    document.querySelectorAll('.conversation-item').forEach(item => {
-        item.classList.remove('active');
+        form.reset();
+        ['coreProductsList', 'intellectualPropertiesList', 'patentList'].forEach((id) => resetDynamicList(id));
     });
 
-    // 找到对应的会话项并添加active状态
-    const conversationItems = document.querySelectorAll('.conversation-item');
-    let found = false;
-    for (let item of conversationItems) {
-        const deleteBtn = item.querySelector('.delete-btn');
-        if (deleteBtn && deleteBtn.onclick.toString().includes(conversationId)) {
-            item.classList.add('active');
-            found = true;
-            break;
-        }
-    }
-
-    if (!found) {
-        console.warn('未找到对应的会话项:', conversationId);
-    }
-
-    // 更新会话标题
-    const conversation = conversations.find(c => c.id === conversationId);
-    if (conversation) {
-        document.getElementById('currentConversationTitle').textContent = conversation.name || '未命名对话';
-    }
-
-    // 加载消息历史
-    await loadMessageHistory(conversationId);
-}
-
-// 显示通用确认模态对话框
-function showConfirmModal(type, data = {}) {
-    pendingConfirmAction = { type, data };
-    const modal = document.getElementById('confirmModal');
-    const title = document.getElementById('modalTitle');
-    const message = document.getElementById('modalMessage');
-    const warning = document.getElementById('modalWarning');
-    const confirmBtn = document.getElementById('confirmButton');
-
-    // 根据操作类型设置不同的样式和内容
-    switch (type) {
-        case CONFIRM_TYPES.DELETE_CONVERSATION:
-            title.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 确认删除';
-            title.className = 'danger';
-            message.textContent = '确定要删除这个会话吗？';
-            warning.style.display = 'block';
-            warning.textContent = '删除后无法恢复，请谨慎操作。';
-            confirmBtn.textContent = '删除';
-            confirmBtn.className = 'btn-confirm danger';
-            break;
-
-        case CONFIRM_TYPES.CLEAR_CHAT:
-            title.innerHTML = '<i class="fas fa-trash"></i> 确认清空';
-            title.className = 'warning';
-            message.textContent = '确定要清空当前对话吗？';
-            warning.style.display = 'block';
-            warning.textContent = '清空后无法恢复，请谨慎操作。';
-            confirmBtn.textContent = '清空';
-            confirmBtn.className = 'btn-confirm warning';
-            break;
-
-        case CONFIRM_TYPES.EXPORT_CHAT:
-            title.innerHTML = '<i class="fas fa-download"></i> 确认导出';
-            title.className = 'success';
-            message.textContent = '确定要导出当前对话记录吗？';
-            warning.style.display = 'none';
-            confirmBtn.textContent = '导出';
-            confirmBtn.className = 'btn-confirm success';
-            break;
-
-        default:
-            title.innerHTML = '<i class="fas fa-question-circle"></i> 确认操作';
-            title.className = '';
-            message.textContent = '确定要执行此操作吗？';
-            warning.style.display = 'none';
-            confirmBtn.textContent = '确认';
-            confirmBtn.className = 'btn-confirm';
-    }
-
-    modal.style.display = 'block';
-}
-
-// 关闭通用确认模态对话框
-function closeConfirmModal() {
-    const modal = document.getElementById('confirmModal');
-    modal.style.display = 'none';
-    pendingConfirmAction = null;
-}
-
-// 执行确认操作
-async function executeConfirmAction() {
-    if (!pendingConfirmAction) {
-        return;
-    }
-
-    const { type, data } = pendingConfirmAction;
-    closeConfirmModal();
-
-    switch (type) {
-        case CONFIRM_TYPES.DELETE_CONVERSATION:
-            await deleteConversationAction(data.conversationId);
-            break;
-
-        case CONFIRM_TYPES.CLEAR_CHAT:
-            clearChatAction();
-            break;
-
-        case CONFIRM_TYPES.EXPORT_CHAT:
-            exportChatAction();
-            break;
-    }
-}
-
-// 删除会话操作
-async function deleteConversationAction(conversationId) {
-    try {
-        const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}?userId=test-user`, {
-            method: 'DELETE'
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            showSuccess('会话删除成功');
-            await loadConversations();
-
-            // 如果删除的是当前会话，清空聊天界面
-            if (currentConversationId === conversationId) {
-                createNewChat();
-            }
-        } else {
-            showError(data.error || '删除会话失败');
-        }
-    } catch (error) {
-        console.error('删除会话失败:', error);
-        showError('删除会话失败');
-    }
-}
-
-// 清空聊天操作
-function clearChatAction() {
-    messages = [];
-    document.getElementById('chatMessages').innerHTML = '';
-    showSuccess('聊天记录已清空');
-}
-
-// 导出聊天记录操作
-function exportChatAction() {
-    if (messages.length === 0) {
-        showError('没有聊天记录可导出');
-        return;
-    }
-
-    const chatData = {
-        conversationId: currentConversationId,
-        messages: messages,
-        exportTime: new Date().toISOString()
-    };
-
-    const dataStr = JSON.stringify(chatData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(dataBlob);
-    link.download = `chat-export-${Date.now()}.json`;
-    link.click();
-
-    showSuccess('聊天记录导出成功');
-}
-
-// 删除会话
-function deleteConversation(conversationId, event) {
-    event.stopPropagation();
-    showConfirmModal(CONFIRM_TYPES.DELETE_CONVERSATION, { conversationId });
-}
-
-// 加载消息历史
-async function loadMessageHistory(conversationId) {
-    try {
-        const response = await fetch(`${API_BASE_URL}/history/${conversationId}?userId=test-user&limit=50`);
-        const data = await response.json();
-
-        if (data.success) {
-            // 转换后端消息格式为前端期望的格式
-            messages = (data.data || []).map(message => {
-                // 用户消息
-                const userMessage = {
-                    role: 'user',
-                    content: message.query || '',
-                    createdAt: message.createdAt * 1000 // 转换为毫秒
-                };
-
-                // AI回复消息
-                const assistantMessage = {
-                    role: 'assistant',
-                    content: message.answer || '',
-                    messageId: message.id,
-                    createdAt: message.createdAt * 1000 // 转换为毫秒
-                };
-
-                return [userMessage, assistantMessage];
-            }).flat().filter(msg => msg.content && msg.content.trim() !== ''); // 过滤空消息
-
-            renderMessages();
-        }
-    } catch (error) {
-        console.error('加载消息历史失败:', error);
-        showError('加载消息历史失败');
-    }
-}
-
-// 渲染消息
-function renderMessages() {
-    const chatMessages = document.getElementById('chatMessages');
-    chatMessages.innerHTML = '';
-
-    messages.forEach(message => {
-        if (message.role === 'user') {
-            const messageElement = createUserMessageElement(message.content, message.createdAt);
-            chatMessages.appendChild(messageElement);
-        } else if (message.role === 'assistant') {
-            const messageElement = createAIMessageElementWithThink(message.content, message.createdAt);
-            chatMessages.appendChild(messageElement);
-        }
-    });
-
-    scrollToBottom();
-}
-
-// 创建用户消息元素
-function createUserMessageElement(content, timestamp) {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'message user';
-
-    messageDiv.innerHTML = `
-        <div class="message-content">
-            <div class="message-text">${content}</div>
-            <div class="message-time">${formatTime(timestamp)}</div>
-        </div>
-        <div class="message-avatar">
-            <i class="fas fa-user"></i>
-        </div>
-    `;
-
-    return messageDiv;
-}
-
-// 创建AI消息元素
-function createAIMessageElement(content, timestamp) {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'message assistant';
-
-    messageDiv.innerHTML = `
-        <div class="message-avatar">
-            <i class="fas fa-robot"></i>
-        </div>
-        <div class="message-content">
-            <div class="message-text">${content}</div>
-            <div class="message-time">${formatTime(timestamp)}</div>
-        </div>
-    `;
-
-    return messageDiv;
-}
-
-// 创建支持思考内容的AI消息元素
-function createAIMessageElementWithThink(content, timestamp) {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'message assistant';
-
-    // 解析内容，分离think和正常回复
-    const { thinkContent, normalContent } = parseContent(content);
-
-    messageDiv.innerHTML = `
-        <div class="message-avatar">
-            <i class="fas fa-robot"></i>
-        </div>
-        <div class="message-content">
-            ${thinkContent ? `
-                <div class="think-section">
-                    <div class="think-header">
-                        <i class="fas fa-brain"></i> 思考过程
-                    </div>
-                    <div class="think-content">${thinkContent}</div>
-                </div>
-            ` : ''}
-            <div class="message-text">${normalContent}</div>
-            <div class="message-time">${formatTime(timestamp)}</div>
-        </div>
-    `;
-
-    return messageDiv;
-}
-
-// 发送消息
-async function sendMessage() {
-    const messageInput = document.getElementById('messageInput');
-    const message = messageInput.value.trim();
-
-    if (!message) return;
-
-    // 添加用户消息到界面
-    addUserMessage(message);
-    messageInput.value = '';
-    messageInput.style.height = 'auto';
-
-    // 显示加载状态
-    showLoading();
-
-    try {
-        // 使用流式API
-        const response = await fetch(`${API_BASE_URL}/send-stream`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                message: message,
-                userId: 'test-user'
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        if (data.success) {
-            // 根据切换状态选择渲染方式
-            const streaming = document.getElementById('streamingToggle')?.checked;
-
-            if (streaming) {
-                // 流式渲染
-                addStreamingAssistantMessage(data.answer, data.messageId);
-            } else {
-                // 完整渲染
-                addAssistantMessage(data.answer, data.messageId);
-            }
-
-            // 更新当前会话ID
-            if (!currentConversationId) {
-                currentConversationId = data.conversationId;
-                await loadConversations();
-            }
-        } else {
-            showError(data.error || '发送消息失败');
-        }
-    } catch (error) {
-        console.error('发送消息失败:', error);
-        showError('网络错误，请重试');
-    } finally {
-        hideLoading();
-    }
-}
-
-// 添加用户消息
-function addUserMessage(content) {
-    const message = {
-        role: 'user',
-        content: content,
-        createdAt: Date.now()
-    };
-
-    messages.push(message);
-
-    const chatMessages = document.getElementById('chatMessages');
-    const messageElement = createUserMessageElement(content, Date.now());
-    chatMessages.appendChild(messageElement);
-
-    scrollToBottom();
-}
-
-// 添加AI回复
-function addAssistantMessage(content, messageId) {
-    const message = {
-        role: 'assistant',
-        content: content,
-        messageId: messageId,
-        createdAt: Date.now()
-    };
-
-    messages.push(message);
-
-    const chatMessages = document.getElementById('chatMessages');
-    const messageElement = createAIMessageElementWithThink(content, Date.now());
-    chatMessages.appendChild(messageElement);
-
-    scrollToBottom();
-}
-
-// 添加流式AI回复
-function addStreamingAssistantMessage(content, messageId) {
-    const message = {
-        role: 'assistant',
-        content: content,
-        messageId: messageId,
-        createdAt: Date.now()
-    };
-
-    messages.push(message);
-
-    const chatMessages = document.getElementById('chatMessages');
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'message assistant streaming';
-
-    // 解析内容，分离think和正常回复
-    const { thinkContent, normalContent } = parseContent(content);
-
-    messageDiv.innerHTML = `
-        <div class="message-avatar">
-            <i class="fas fa-robot"></i>
-        </div>
-        <div class="message-content">
-            ${thinkContent ? `
-                <div class="think-section">
-                    <div class="think-header">
-                        <i class="fas fa-brain"></i> 思考过程
-                    </div>
-                    <div class="think-content"></div>
-                </div>
-            ` : ''}
-            <div class="message-text streaming-text"></div>
-            <div class="message-time">${formatTime(Date.now())}</div>
-            <div class="streaming-indicator">
-                <span class="typing-dot"></span>
-                <span class="typing-dot"></span>
-                <span class="typing-dot"></span>
-            </div>
-        </div>
-    `;
-    chatMessages.appendChild(messageDiv);
-    scrollToBottom();
-
-    // 逐字渲染
-    const textDiv = messageDiv.querySelector('.message-text');
-    const thinkDiv = messageDiv.querySelector('.think-content');
-    let i = 0;
-    let thinkIndex = 0;
-
-    function typeNext() {
-        if (i <= normalContent.length) {
-            textDiv.textContent = normalContent.slice(0, i);
-            i++;
-            scrollToBottom();
-            setTimeout(typeNext, 15); // 打字速度可调
-        } else {
-            // 渲染完成后去掉流式动画
-            messageDiv.classList.remove('streaming');
-            const indicator = messageDiv.querySelector('.streaming-indicator');
-            if (indicator) indicator.style.display = 'none';
-
-            // 移除闪烁光标效果
-            if (textDiv) {
-                textDiv.classList.remove('streaming-text');
-            }
-        }
-    }
-
-    // 如果有思考内容，先渲染思考部分
-    if (thinkContent && thinkDiv) {
-        let thinkI = 0;
-        function typeThink() {
-            if (thinkI <= thinkContent.length) {
-                thinkDiv.textContent = thinkContent.slice(0, thinkI);
-                thinkI++;
-                scrollToBottom();
-                setTimeout(typeThink, 10); // 思考部分打字稍快
-            } else {
-                // 思考部分完成后开始渲染正常回复
-                setTimeout(typeNext, 500); // 暂停500ms后开始回复
-            }
-        }
-        typeThink();
-    } else {
-        typeNext();
-    }
-}
-
-// 显示加载状态
-function showLoading() {
-    const chatMessages = document.getElementById('chatMessages');
-    const loadingDiv = document.createElement('div');
-    loadingDiv.className = 'message assistant';
-    loadingDiv.id = 'loadingMessage';
-
-    loadingDiv.innerHTML = `
-        <div class="message-avatar">
-            <i class="fas fa-robot"></i>
-        </div>
-        <div class="message-content">
-            <div class="loading">
-                <span>AI正在思考</span>
-                <div class="loading-dots">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </div>
-            </div>
-        </div>
-    `;
-
-    chatMessages.appendChild(loadingDiv);
-    scrollToBottom();
-}
-
-// 隐藏加载状态
-function hideLoading() {
-    const loadingMessage = document.getElementById('loadingMessage');
-    if (loadingMessage) {
-        loadingMessage.remove();
-    }
-}
-
-// 滚动到底部
-function scrollToBottom() {
-    const chatMessages = document.getElementById('chatMessages');
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-// 创建新对话
-function createNewChat() {
-    currentConversationId = null;
-    messages = [];
-
-    // 重置UI
-    document.querySelectorAll('.conversation-item').forEach(item => {
-        item.classList.remove('active');
-    });
-
-    document.getElementById('currentConversationTitle').textContent = '新对话';
-    document.getElementById('chatMessages').innerHTML = '';
-}
-
-// 键盘事件处理
-function handleKeyDown(event) {
-    if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault();
-        sendMessage();
-    }
-}
-
-// 清空聊天
-function clearChat() {
-    showConfirmModal(CONFIRM_TYPES.CLEAR_CHAT);
-}
-
-// 导出聊天记录
-function exportChat() {
-    showConfirmModal(CONFIRM_TYPES.EXPORT_CHAT);
-}
-
-// 显示成功信息
-function showSuccess(message) {
-    console.log(message);
-    showToast(message, 'success');
-}
-
-// 显示错误信息
-function showError(message) {
-    console.error(message);
-    showToast(message, 'error');
-}
-
-// 显示Toast通知
-function showToast(message, type = 'info') {
-    // 创建toast元素
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.innerHTML = `
-        <div class="toast-content">
-            <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i>
-            <span>${message}</span>
-        </div>
-    `;
-
-    // 添加到页面
-    document.body.appendChild(toast);
-
-    // 显示动画
-    setTimeout(() => {
-        toast.classList.add('show');
-    }, 100);
-
-    // 自动隐藏
-    setTimeout(() => {
-        toast.classList.remove('show');
+    form.addEventListener('reset', () => {
         setTimeout(() => {
-            if (toast.parentNode) {
-                toast.parentNode.removeChild(toast);
-            }
-        }, 300);
-    }, 3000);
+            resultContainer.innerHTML = '';
+            resultContainer.classList.remove('visible');
+            ['coreProductsList', 'intellectualPropertiesList', 'patentList'].forEach((id) => resetDynamicList(id));
+        }, 0);
+    });
 }
 
-// 解析内容，分离think和正常回复
-function parseContent(content) {
-    const thinkMatch = content.match(/<think>(.*?)<\/think>/s);
-    let thinkContent = '';
-    let normalContent = content;
-
-    if (thinkMatch) {
-        thinkContent = thinkMatch[1].trim();
-        normalContent = content.replace(/<think>.*?<\/think>/s, '').trim();
+function resetDynamicList(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) {
+        return;
     }
 
-    return { thinkContent, normalContent };
+    const items = container.querySelectorAll('.dynamic-item');
+    items.forEach((item, index) => {
+        const input = item.querySelector('input');
+        if (index === 0) {
+            if (input) {
+                input.value = '';
+            }
+        } else {
+            item.remove();
+        }
+    });
+
+    updateRemoveButtons(container);
 }
 
-// 格式化时间
-function formatTime(timestamp) {
-    const date = new Date(timestamp);
-    return date.toLocaleString();
-} 
+document.addEventListener('DOMContentLoaded', () => {
+    handleNavigation();
+    setupChatPanels();
+    setupCapabilityForm();
+});
